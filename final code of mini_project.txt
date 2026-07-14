@@ -1,0 +1,462 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <Servo.h>
+
+// ================= SERVER =================
+ESP8266WebServer server(80);
+Servo myservo;
+
+// ================= PINS =================
+// MOTOR
+#define IN1 D1
+#define IN2 D2
+#define IN3 D3
+#define IN4 D4
+// #define ENA D5
+// #define ENB D6
+#define PIR D5
+#define BUZZER D6
+
+// ULTRASONIC
+#define TRIG D7
+#define ECHO D8
+
+// ================= GLOBAL VARIABLES =================
+int speedVal = 800;
+float distance = 0;
+bool motionEnabled =false;
+
+// ================= FUNCTION PROTOTYPES =================
+// Web
+void landingPage();
+void dashboard();
+void handleMove();
+void handleSpeed();
+void handleServo();
+void getDistance();
+void alertBox();
+
+// Sensor
+void readDistance();
+
+// Motor control
+void forward();
+void backward();
+void left();
+void right();
+void stopMotor();
+
+void handleToggleMotion();
+void getMotionStatus();
+
+// ================= SETUP =================
+void setup() {
+  Serial.begin(115200);
+
+  // MOTOR PINS
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  // pinMode(ENA, OUTPUT);
+  // pinMode(ENB, OUTPUT);
+
+  // ULTRASONIC
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+
+  //sensor motion
+  pinMode(PIR,INPUT);
+  pinMode(BUZZER,OUTPUT);
+  digitalWrite(BUZZER,LOW);
+
+  // SERVO
+  myservo.attach(D0);
+  myservo.write(90);
+
+  // PWM CONFIG
+  analogWriteRange(1023);
+
+  // WIFI
+  WiFi.softAP("SMART_CAR", "12345678");
+
+  // ROUTES
+  server.on("/", landingPage);
+  server.on("/dash", dashboard);
+
+  server.on("/move", handleMove);
+  server.on("/speed", handleSpeed);
+  server.on("/servo", handleServo);
+
+  server.on("/distance", getDistance);
+  server.on("/alert", alertBox);
+
+  server.on("/toggleMotion",handleToggleMotion);
+  server.on("/motionStatus",getMotionStatus);
+
+
+  server.begin();
+
+  // INIT STATE
+  stopMotor();
+  // analogWrite(ENA, speedVal);
+  // analogWrite(ENB, speedVal);
+}
+
+// ================= LOOP =================
+void loop() {
+  server.handleClient();
+  readDistance();
+  Serial.println(distance);
+  
+}
+
+// ================= ULTRASONIC =================
+void readDistance() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  long duration = pulseIn(ECHO, HIGH, 30000);
+  distance = duration * 0.034 / 2;
+}
+
+void getDistance() {
+  server.send(200, "text/plain", String(distance));
+}
+
+void alertBox() {
+  if (distance > 0 && distance < 15)
+    server.send(200, "text/plain", "1");
+  else
+    server.send(200, "text/plain", "0");
+}
+
+// ================= WEB PAGES =================
+void landingPage() {
+  server.send(200, "text/html",
+R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{font-family:Arial;text-align:center;background:#0f172a;color:white;}
+button{padding:15px;font-size:18px;border:none;border-radius:10px;background:#2563eb;color:white;}
+</style>
+</head>
+
+<body>
+<h1>🚗 SMART ROBOT</h1>
+<p>ESP8266 Control System</p>
+<button onclick="location.href='/dash'">Enter Dashboard</button>
+</body>
+</html>
+)rawliteral");
+}
+
+// ================= DASHBOARD =================
+void dashboard() {
+  server.send(200, "text/html",
+R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<style>
+body{margin:0;font-family:Arial;background:#0f172a;color:white;}
+.header{text-align:center;padding:12px;background:#111827;}
+.container{
+  display:flex;
+  flex-direction:column;
+  gap:15px;
+  padding:10px;
+}
+
+.card{
+  width:100%;
+  background:#1e293b;
+  padding:12px;
+  border-radius:10px;
+  box-sizing:border-box;
+}
+button{padding:10px;margin:4px;border:none;border-radius:8px;background:#2563eb;color:white;}
+.alert{display:none;background:red;padding:10px;border-radius:8px;margin-top:10px;}
+.pad{
+  display:grid;
+  grid-template-columns: 60px 60px 60px;
+  grid-template-rows: 60px 60px 60px;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+  margin-top:10px;
+}
+
+.pad button{
+  width:60px;
+  height:60px;
+  font-size:20px;
+  border-radius:10px;
+}
+
+
+.up{grid-column:2;grid-row:1;}
+.left{grid-column:1;grid-row:2;}
+.stop{grid-column:2;grid-row:2;background:red;}
+.right{grid-column:3;grid-row:2;}
+.down{grid-column:2;grid-row:3;}
+
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 70px;
+  height: 35px;
+}
+
+.switch input { display:none; }
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top:0; left:0; right:0; bottom:0;
+  background-color: red;
+  border-radius: 50px;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 27px;
+  width: 27px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  border-radius: 50%;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: green;
+}
+
+input:checked + .slider:before {
+  transform: translateX(35px);
+}
+
+
+</style>
+</head>
+
+<body>
+
+<div class="header">SMART DASHBOARD</div>
+
+<div class="container">
+
+
+
+<div class="card">
+<h3>🚗 Control</h3>
+<div class="pad">
+  <button class="up" onclick="cmd('F')">▲</button>
+  <button class="left" onclick="cmd('L')">◀</button>
+  <button class="stop" onclick="cmd('S')">●</button>
+  <button class="right" onclick="cmd('R')">▶</button>
+  <button class="down" onclick="cmd('B')">▼</button>
+</div>
+
+<br><br>
+
+Speed:
+<input type="range" min="0" max="1023" value="800" oninput="spd(this.value)">
+</div>
+
+
+<div class="card">
+<h3>📡 Ultrasonic</h3>
+Distance: <span id="d">--</span> cm
+<div id="alert" class="alert">⚠ Obstacle detected!</div>
+
+</div>
+<!--SERVO-->
+<div class="card">
+<h3>🎯 Servo</h3>
+<button onclick="servo(0)">0</button>
+<button onclick="servo(90)">90</button>
+<button onclick="servo(180)">180</button>
+<input type="range" min="0" max="180" value="90" oninput="servo(this.value)">
+</div>
+
+<div class="card">
+<h3>🚨 Motion Sensor</h3>
+
+<label class="switch">
+  <input type="checkbox" onchange="toggleMotion()">
+  <span class="slider"></span>
+</label>
+
+<div id="motionStatus">OFF</div>
+</div>
+
+
+<script>
+function cmd(d){fetch('/move?dir='+d);}
+function spd(v){fetch('/speed?val='+v);}
+function servo(a){fetch('/servo?angle='+a);}
+
+
+
+let alreadySpoken = false;
+
+function speak(text) {
+  speechSynthesis.cancel(); // مهم جداً لمنع التكدس
+
+  const msg = new SpeechSynthesisUtterance(text);
+  msg.lang = "en-US";
+  msg.rate = 1;
+  msg.pitch = 1;
+
+  speechSynthesis.speak(msg);
+}
+
+setInterval(() => {
+
+  
+  fetch("/distance")
+    .then(r => r.text())
+    .then(data => {
+      document.getElementById("d").innerHTML = data;
+    });
+
+ 
+  fetch("/alert")
+    .then(r => r.text())
+    .then(data => {
+
+      if (data == "1") {
+
+        document.getElementById("alert").style.display = "block";
+
+        if (!alreadySpoken) {
+          alreadySpoken = true;
+
+          setTimeout(() => {
+            speak("Warning! Obstacle detected.");
+          }, 100);
+        }
+
+      } else {
+
+        document.getElementById("alert").style.display = "none";
+        alreadySpoken = false;
+
+        speechSynthesis.cancel();
+      }
+
+    });
+
+}, 1000);
+
+
+function toggleMotion(){
+  fetch('/toggleMotion')
+  .then(r=>r.text())
+  .then(v=>{
+    document.getElementById("motionStatus").innerText = v;
+  });
+}
+
+setInterval(()=>{
+  fetch('/motionStatus')
+  .then(r=>r.text())
+  .then(v=>{
+    document.getElementById("motionStatus").innerText = v;
+  });
+},500);
+</script>
+
+</body>
+</html>
+)rawliteral");
+}
+
+// ================= HANDLERS =================
+void handleMove() {
+  String d = server.arg("dir");
+
+  if (d == "F") forward();
+  else if (d == "B") backward();
+  else if (d == "L") left();
+  else if (d == "R") right();
+  else stopMotor();
+
+  server.send(200, "text/plain", "OK");
+}
+
+void handleSpeed() {
+  speedVal = server.arg("val").toInt();
+  // analogWrite(ENA, speedVal);
+  // analogWrite(ENB, speedVal);
+  server.send(200, "text/plain", "OK");
+}
+
+void handleServo() {
+  myservo.write(server.arg("angle").toInt());
+  server.send(200, "text/plain", "OK");
+}
+
+void handleToggleMotion() {
+  motionEnabled = !motionEnabled;
+  server.send(200, "text/plain", motionEnabled ? "ON" : "OFF");
+}
+
+void getMotionStatus() {
+  if (!motionEnabled) {
+    digitalWrite(BUZZER, LOW);
+    server.send(200, "text/plain", "OFF");
+    return;
+  }
+
+  int pir = digitalRead(PIR);
+
+  if (pir == HIGH) {
+    digitalWrite(BUZZER, HIGH);
+    server.send(200, "text/plain", "MOTION!");
+  } else {
+    digitalWrite(BUZZER, LOW);
+    server.send(200, "text/plain", "NO MOTION");
+  }
+}// ================= MOTOR FUNCTIONS =================
+void forward() {
+  digitalWrite(IN1, 1); digitalWrite(IN2, 0);
+  digitalWrite(IN3, 1); digitalWrite(IN4, 0);
+}
+
+void backward() {
+  digitalWrite(IN1, 0); digitalWrite(IN2, 1);
+  digitalWrite(IN3, 0); digitalWrite(IN4, 1);
+}
+
+void left() {
+  digitalWrite(IN1, 0); digitalWrite(IN2, 0);
+  digitalWrite(IN3, 1); digitalWrite(IN4, 0);
+}
+
+void right() {
+  digitalWrite(IN1, 1); digitalWrite(IN2, 0);
+  digitalWrite(IN3, 0); digitalWrite(IN4, 0);
+}
+
+void stopMotor() {
+  digitalWrite(IN1, 1); digitalWrite(IN2, 1);
+  digitalWrite(IN3, 1); digitalWrite(IN4, 1);
+}
