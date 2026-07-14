@@ -1,33 +1,29 @@
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
-#include <Servo.h>
+//include the libraries to usee
+#include <ESP8266WiFi.h>  //for the use of esp to wifi
+#include <ESP8266WebServer.h> // develop web server in the esp itselff based on the ip address of the esp
+#include <Servo.h>  // library dedicated for the servo motor actionss
 
-// ================= SERVER =================
-ESP8266WebServer server(80);
-Servo myservo;
+// SERVER 
+ESP8266WebServer server(80); // the esp will create a server named "server" , working on port 80 default port for http, 
+Servo myservo; 
 
-// ================= PINS =================
-// MOTOR
-#define IN1 D1
+// PINS  configurations
+#define IN1 D1  //for motor A
 #define IN2 D2
-#define IN3 D3
+#define IN3 D3  // FOR MOTOR B
 #define IN4 D4
-// #define ENA D5
-// #define ENB D6
-#define PIR D5
-#define BUZZER D6
+#define PIR D5    
+#define BUZZER D6  
 
-// ULTRASONIC
-#define TRIG D7
-#define ECHO D8
+// ULTRASONIC pins
+#define TRIG D7     // triger the motion
+#define ECHO D8     // send back the motion
 
-// ================= GLOBAL VARIABLES =================
-int speedVal = 800;
-float distance = 0;
-bool motionEnabled =false;
+int speedVal = 800;  
+float distance = 0;  //the distance for the ultrasonic sensor
+bool motionEnabled =false; //ffor the hasses l harake
 
-// ================= FUNCTION PROTOTYPES =================
-// Web
+// FUNCTION PROTOTYPES 
 void landingPage();
 void dashboard();
 void handleMove();
@@ -35,85 +31,76 @@ void handleSpeed();
 void handleServo();
 void getDistance();
 void alertBox();
-
-// Sensor
 void readDistance();
 
-// Motor control
+// lal Motor control
 void forward();
 void backward();
 void left();
 void right();
 void stopMotor();
-
 void handleToggleMotion();
 void getMotionStatus();
 
-// ================= SETUP =================
-void setup() {
-  Serial.begin(115200);
+void setup() {  
+  Serial.begin(115200);  //for the serial monitor the baud rate
 
-  // MOTOR PINS
+  // MOTOR PINS to tell the esp how each pin will behave 
+// output: esp sends voltage, input : esp reads voltage
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-  // pinMode(ENA, OUTPUT);
-  // pinMode(ENB, OUTPUT);
 
-  // ULTRASONIC
-  pinMode(TRIG, OUTPUT);
-  pinMode(ECHO, INPUT);
+  // configure the ULTRASONIC sensor
+  pinMode(TRIG, OUTPUT);   // trig sends short pulse 
+  pinMode(ECHO, INPUT);    // echo receives the reflected pulse
 
-  //sensor motion
-  pinMode(PIR,INPUT);
-  pinMode(BUZZER,OUTPUT);
-  digitalWrite(BUZZER,LOW);
+  // conf sensor motion 
+  pinMode(PIR,INPUT);     //pir sensor sends high or low to the esp  
+  pinMode(BUZZER,OUTPUT);   //esp controls when buzzer turns  on or off
+  digitalWrite(BUZZER,LOW);  //turn off the buzzer initially
 
   // SERVO
-  myservo.attach(D0);
-  myservo.write(90);
+  myservo.attach(D0);   // means the servo signal wire is connected to pin D0
+  myservo.write(90);    
 
   // PWM CONFIG
-  analogWriteRange(1023);
+  analogWriteRange(1023);  // range of 0 till 1023 speed dor pmw valkues
 
-  // WIFI
-  WiFi.softAP("SMART_CAR", "12345678");
+  // creat WIFI network 
+  WiFi.softAP("SMART_DASH", "12345678"); // esp beacomes a wifi access point like a mini router, an end point will connects directly
+      // to wwif name (SSID) ; smart-dash  and the password : 1234567
 
-  // ROUTES
+  // ROUTES   means if someone visit the URL , the fct will be executed
+  // syntax : server.on("URL", functionname)
+  //server is the web server we named . 
   server.on("/", landingPage);
-  server.on("/dash", dashboard);
+  server.on("/dash", dashboard); // browser request http://192.268.4.1/dash ; esp executes dashborad();
 
   server.on("/move", handleMove);
   server.on("/speed", handleSpeed);
   server.on("/servo", handleServo);
-
   server.on("/distance", getDistance);
   server.on("/alert", alertBox);
-
   server.on("/toggleMotion",handleToggleMotion);
   server.on("/motionStatus",getMotionStatus);
 
+  server.begin(); 
 
-  server.begin();
-
-  // INIT STATE
-  stopMotor();
-  // analogWrite(ENA, speedVal);
-  // analogWrite(ENB, speedVal);
+  stopMotor();    // INIT state
 }
 
-// ================= LOOP =================
 void loop() {
-  server.handleClient();
-  readDistance();
+  server.handleClient();  //to check if client send a request  
+  readDistance();  //so the distance is measured  by the esp 
   Serial.println(distance);
   
 }
 
-// ================= ULTRASONIC =================
+//  ULTRASONIC 
 void readDistance() {
-  digitalWrite(TRIG, LOW);
+  digitalWrite(TRIG, LOW);  
   delayMicroseconds(2);
   digitalWrite(TRIG, HIGH);
   delayMicroseconds(10);
@@ -128,16 +115,15 @@ void getDistance() {
 }
 
 void alertBox() {
-  if (distance > 0 && distance < 15)
+  if (distance > 0 && distance < 7)
     server.send(200, "text/plain", "1");
   else
     server.send(200, "text/plain", "0");
 }
 
-// ================= WEB PAGES =================
-void landingPage() {
-  server.send(200, "text/html",
-R"rawliteral(
+// WEB PAGES 
+void landingPage() {   //send first html page
+  server.send(200, "text/html", R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
@@ -156,19 +142,18 @@ button{padding:15px;font-size:18px;border:none;border-radius:10px;background:#25
 <button onclick="location.href='/dash'">Enter Dashboard</button>
 </body>
 </html>
+
 )rawliteral");
 }
 
-// ================= DASHBOARD =================
+//  DASHBOARD 
 void dashboard() {
-  server.send(200, "text/html",
-R"rawliteral(
+  server.send(200, "text/html", R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 
 <style>
 body{margin:0;font-family:Arial;background:#0f172a;color:white;}
@@ -206,13 +191,12 @@ button{padding:10px;margin:4px;border:none;border-radius:8px;background:#2563eb;
   border-radius:10px;
 }
 
-
+/*    */
 .up{grid-column:2;grid-row:1;}
 .left{grid-column:1;grid-row:2;}
 .stop{grid-column:2;grid-row:2;background:red;}
 .right{grid-column:3;grid-row:2;}
 .down{grid-column:2;grid-row:3;}
-
 
 .switch {
   position: relative;
@@ -252,7 +236,6 @@ input:checked + .slider:before {
   transform: translateX(35px);
 }
 
-
 </style>
 </head>
 
@@ -261,7 +244,6 @@ input:checked + .slider:before {
 <div class="header">SMART DASHBOARD</div>
 
 <div class="container">
-
 
 
 <div class="card">
@@ -279,7 +261,6 @@ input:checked + .slider:before {
 Speed:
 <input type="range" min="0" max="1023" value="800" oninput="spd(this.value)">
 </div>
-
 
 <div class="card">
 <h3>📡 Ultrasonic</h3>
@@ -307,13 +288,10 @@ Distance: <span id="d">--</span> cm
 <div id="motionStatus">OFF</div>
 </div>
 
-
 <script>
 function cmd(d){fetch('/move?dir='+d);}
 function spd(v){fetch('/speed?val='+v);}
 function servo(a){fetch('/servo?angle='+a);}
-
-
 
 let alreadySpoken = false;
 
@@ -366,7 +344,6 @@ setInterval(() => {
 
 }, 1000);
 
-
 function toggleMotion(){
   fetch('/toggleMotion')
   .then(r=>r.text())
@@ -389,9 +366,9 @@ setInterval(()=>{
 )rawliteral");
 }
 
-// ================= HANDLERS =================
+//  HANDLERS 
 void handleMove() {
-  String d = server.arg("dir");
+  String d = server.arg("dir");  //get dir from the url , then call the corresponfing motor function
 
   if (d == "F") forward();
   else if (d == "B") backward();
@@ -403,18 +380,17 @@ void handleMove() {
 }
 
 void handleSpeed() {
-  speedVal = server.arg("val").toInt();
-  // analogWrite(ENA, speedVal);
-  // analogWrite(ENB, speedVal);
+  speedVal = server.arg("val").toInt();  // reads slider value and stores in the variable
+
   server.send(200, "text/plain", "OK");
 }
 
-void handleServo() {
+void handleServo() {  //to read the angle from the user commands and rotates the servo accordingly 
   myservo.write(server.arg("angle").toInt());
   server.send(200, "text/plain", "OK");
 }
 
-void handleToggleMotion() {
+void handleToggleMotion() {  // toggle the motion and rthen send it to the webpage
   motionEnabled = !motionEnabled;
   server.send(200, "text/plain", motionEnabled ? "ON" : "OFF");
 }
@@ -435,28 +411,40 @@ void getMotionStatus() {
     digitalWrite(BUZZER, LOW);
     server.send(200, "text/plain", "NO MOTION");
   }
-}// ================= MOTOR FUNCTIONS =================
-void forward() {
-  digitalWrite(IN1, 1); digitalWrite(IN2, 0);
-  digitalWrite(IN3, 1); digitalWrite(IN4, 0);
+}
+
+// MOTOR FUNCTIONS 
+void forward() {  //1 for high and 0 for low  in this way the motors move forward  
+  digitalWrite(IN1, 1); 
+  digitalWrite(IN2, 0);
+  digitalWrite(IN3, 1); 
+  digitalWrite(IN4, 0);
 }
 
 void backward() {
-  digitalWrite(IN1, 0); digitalWrite(IN2, 1);
-  digitalWrite(IN3, 0); digitalWrite(IN4, 1);
+  digitalWrite(IN1, 0); 
+  digitalWrite(IN2, 1);
+  digitalWrite(IN3, 0); 
+  digitalWrite(IN4, 1);
 }
 
 void left() {
-  digitalWrite(IN1, 0); digitalWrite(IN2, 0);
-  digitalWrite(IN3, 1); digitalWrite(IN4, 0);
+  digitalWrite(IN1, 0); 
+  digitalWrite(IN2, 1);
+  digitalWrite(IN3, 1); 
+  digitalWrite(IN4, 0);
 }
 
 void right() {
-  digitalWrite(IN1, 1); digitalWrite(IN2, 0);
-  digitalWrite(IN3, 0); digitalWrite(IN4, 0);
+  digitalWrite(IN1, 1); 
+  digitalWrite(IN2, 0);
+  digitalWrite(IN3, 0); 
+  digitalWrite(IN4, 1);
 }
 
 void stopMotor() {
-  digitalWrite(IN1, 1); digitalWrite(IN2, 1);
-  digitalWrite(IN3, 1); digitalWrite(IN4, 1);
+  digitalWrite(IN1, 0); 
+  digitalWrite(IN2, 0);
+  digitalWrite(IN3, 0); 
+  digitalWrite(IN4, 0);
 }
